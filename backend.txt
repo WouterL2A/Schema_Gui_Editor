@@ -1,0 +1,6 @@
+# from project root
+python -m venv .venv
+. .\.venv\Scripts\Activate.ps1
+pip install -r server/requirements.txt
+copy .env.example .env   # optional; fill AI_API_* for real LLM
+uvicorn server.main:app --reload --port 8001

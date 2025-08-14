@@ -1,0 +1,4 @@
+nvm use 20.19.0
+npm install
+# (optional) echo VITE_API_BASE=http://localhost:8001 > .env.local
+npm run dev

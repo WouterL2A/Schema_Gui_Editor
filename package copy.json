@@ -6,16 +6,15 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview",
-    "server": "uvicorn server.main:app --reload --port 8001"
+    "preview": "vite preview"
   },
   "dependencies": {
-    "ajv": "^8.17.1",
-    "ajv-formats": "^2.1.1",
     "framer-motion": "^11.2.10",
     "lucide-react": "^0.454.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^2.1.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
