@@ -1,5 +1,8 @@
 import React from "react";
-import { Plus, Download, Upload, Trash2, Pencil, Save, X, Database, CheckCircle2, AlertTriangle, Search, Info, Sparkles } from "lucide-react";
+import {
+  Plus, Download, Upload, Trash2, Pencil, Save, X, Database,
+  CheckCircle2, AlertTriangle, Search, Info, Sparkles
+} from "lucide-react";
 import Ajv from "ajv";
 import addFormats from "ajv-formats";
 import draft7Meta from "ajv/dist/refs/json-schema-draft-07.json";
@@ -10,6 +13,7 @@ const deepClone = (o) => JSON.parse(JSON.stringify(o));
 const JSON_TYPES = ["string", "number", "integer", "boolean", "array", "object"];
 const STRING_FORMATS = ["", "uuid", "email", "date-time", "uri", "hostname", "ipv4", "ipv6"];
 
+// Common pattern presets (helpful examples)
 const PATTERN_PRESETS = [
   { label: "(none)", value: "" },
   { label: "UUID v4", value: "^[0-9a-fA-F]{8}\\-[0-9a-fA-F]{4}\\-4[0-9a-fA-F]{3}\\-[89abAB][0-9a-fA-F]{3}\\-[0-9a-fA-F]{12}$" },
@@ -18,7 +22,7 @@ const PATTERN_PRESETS = [
   { label: "Slug (kebab-case)", value: "^[a-z0-9]+(?:-[a-z0-9]+)*$" }
 ];
 
-// --------- Default schema (same as before) ----------
+// --------- Default schema (example) ----------
 const DEFAULT_SCHEMA = {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "User Management Model",
@@ -169,9 +173,11 @@ function Modal({ open, title, children, onClose, onSave, saveLabel="Save" }) {
         <div className="max-h-[70vh] overflow-auto p-4">{children}</div>
         <div className="flex items-center justify-end gap-2 border-t px-4 py-3">
           <button onClick={onClose} className="rounded-xl border px-4 py-2">Cancel</button>
-          {onSave && <button onClick={onSave} className="inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2 text-white">
-            <Save size={16}/> {saveLabel}
-          </button>}
+          {onSave && (
+            <button onClick={onSave} className="inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2 text-white">
+              <Save size={16}/> {saveLabel}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -190,18 +196,24 @@ function PropertyForm({ value, onChange, defs, activeEntityKey }) {
   const isNumber = t === "number" || t === "integer";
   const isArray = t === "array";
 
+  // 3) refTable options: all other entities except the one we're editing
   const refTableOptions = React.useMemo(() => {
     return Object.keys(defs || {}).filter(k => k !== activeEntityKey);
   }, [defs, activeEntityKey]);
 
   const selectedRefTable = local.refTable || "";
+  // 4) refColumn options: only properties from the selected refTable
   const refColumnOptions = React.useMemo(() => {
     if (!selectedRefTable || !defs?.[selectedRefTable]?.properties) return [];
     return Object.keys(defs[selectedRefTable].properties);
   }, [defs, selectedRefTable]);
+
   const selectedRefColumn = local.refColumn || "";
+
+  // 5) relationshipName restricted to fields of selected refTable (per your request)
   const relationshipNameOptions = refColumnOptions;
 
+  // Auto-derive $ref when refTable/refColumn change
   React.useEffect(() => {
     if (selectedRefTable && selectedRefColumn) {
       set("$ref", `#/definitions/${selectedRefTable}/properties/${selectedRefColumn}`);
@@ -211,11 +223,13 @@ function PropertyForm({ value, onChange, defs, activeEntityKey }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRefTable, selectedRefColumn]);
 
+  // Enum helper
   const handleEnumChange = (text) => {
     const arr = text.split(",").map(s => s.trim()).filter(Boolean);
     set("enum", arr.length ? arr : undefined);
   };
 
+  // Pattern presets + free text
   const [patternPreset, setPatternPreset] = React.useState("");
   React.useEffect(() => {
     const match = PATTERN_PRESETS.find(p => p.value === (local.pattern || ""));
@@ -226,23 +240,35 @@ function PropertyForm({ value, onChange, defs, activeEntityKey }) {
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
       <TextInput label="Name" value={local.__name || ""} onChange={(x) => set("__name", x)} />
 
+      {/* Type (draft-07) */}
       <label className="grid gap-1 text-sm">
         <span className="text-gray-600">Type</span>
-        <select className="w-full rounded-xl border px-3 py-2" value={t} onChange={(e)=> set("type", e.target.value || undefined)}>
+        <select
+          className="w-full rounded-xl border px-3 py-2"
+          value={t}
+          onChange={(e)=> set("type", e.target.value || undefined)}
+        >
           <option value="">(none)</option>
           {JSON_TYPES.map((opt)=> <option key={opt} value={opt}>{opt}</option>)}
         </select>
       </label>
 
+      {/* Format (strings only) */}
       <label className="grid gap-1 text-sm">
         <span className="text-gray-600">Format</span>
-        <select className="w-full rounded-xl border px-3 py-2" value={local.format || ""} onChange={(e)=> set("format", e.target.value || undefined)} disabled={!isString}>
+        <select
+          className="w-full rounded-xl border px-3 py-2"
+          value={local.format || ""}
+          onChange={(e)=> set("format", e.target.value || undefined)}
+          disabled={!isString}
+        >
           {STRING_FORMATS.map((f)=> <option key={f} value={f}>{f || "(none)"}</option>)}
         </select>
       </label>
 
       <TextInput label="Default" value={local.default || ""} onChange={(x) => set("default", x)} placeholder="now() or literal" />
 
+      {/* 1) Enum with example placeholder */}
       <TextInput
         label="Enum (comma separated)"
         value={Array.isArray(local.enum) ? local.enum.join(",") : ""}
@@ -250,25 +276,40 @@ function PropertyForm({ value, onChange, defs, activeEntityKey }) {
         placeholder="e.g. red, green, blue"
       />
 
+      {/* String constraints */}
       {isString && (
         <>
           <TextInput label="minLength" value={local.minLength ?? ""} onChange={(x)=> set("minLength", x ? Number(x) : undefined)} />
           <TextInput label="maxLength" value={local.maxLength ?? ""} onChange={(x)=> set("maxLength", x ? Number(x) : undefined)} />
+
+          {/* 2) Pattern: presets + free text */}
           <label className="grid gap-1 text-sm">
             <span className="text-gray-600">Pattern</span>
             <div className="flex gap-2">
-              <select className="w-1/2 rounded-xl border px-3 py-2" value={patternPreset}
-                onChange={(e) => { const val = e.target.value; setPatternPreset(val); set("pattern", val || undefined); }}>
+              <select
+                className="w-1/2 rounded-xl border px-3 py-2"
+                value={patternPreset}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setPatternPreset(val);
+                  set("pattern", val || undefined);
+                }}
+              >
                 {PATTERN_PRESETS.map(p => <option key={p.label} value={p.value}>{p.label}</option>)}
               </select>
-              <input className="w-1/2 rounded-xl border px-3 py-2" value={local.pattern || ""} placeholder="e.g. ^[A-Z]{3}-\\d{4}$"
-                onChange={(e) => set("pattern", e.target.value || undefined)} />
+              <input
+                className="w-1/2 rounded-xl border px-3 py-2"
+                value={local.pattern || ""}
+                placeholder="e.g. ^[A-Z]{3}-\\d{4}$"
+                onChange={(e) => set("pattern", e.target.value || undefined)}
+              />
             </div>
             <span className="text-xs text-gray-500">Use a preset or your own ECMA regex.</span>
           </label>
         </>
       )}
 
+      {/* Number / Integer constraints */}
       {isNumber && (
         <>
           <TextInput label="minimum" value={local.minimum ?? ""} onChange={(x)=> set("minimum", x!=="" ? Number(x) : undefined)} />
@@ -276,12 +317,16 @@ function PropertyForm({ value, onChange, defs, activeEntityKey }) {
         </>
       )}
 
+      {/* Array-only */}
       {isArray && (
         <>
           <label className="grid gap-1 text-sm">
             <span className="text-gray-600">items.type</span>
-            <select className="w-full rounded-xl border px-3 py-2" value={local.items?.type || ""}
-              onChange={(e)=> set("items", { ...(local.items||{}), type: e.target.value || undefined })}>
+            <select
+              className="w-full rounded-xl border px-3 py-2"
+              value={local.items?.type || ""}
+              onChange={(e)=> set("items", { ...(local.items||{}), type: e.target.value || undefined })}
+            >
               <option value="">(none)</option>
               {JSON_TYPES.filter(x=> x!=="array").map((opt)=> <option key={opt} value={opt}>{opt}</option>)}
             </select>
@@ -293,52 +338,85 @@ function PropertyForm({ value, onChange, defs, activeEntityKey }) {
             placeholder="e.g. bronze, silver, gold"
           />
           <label className="inline-flex items-center gap-2 text-sm mt-2">
-            <input type="checkbox" className="h-4 w-4" checked={!!local.uniqueItems}
-              onChange={(e)=> set("uniqueItems", e.target.checked || undefined)} />
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              checked={!!local.uniqueItems}
+              onChange={(e)=> set("uniqueItems", e.target.checked || undefined)}
+            />
             <span className="text-gray-700">uniqueItems</span>
           </label>
         </>
       )}
 
+      {/* 3) refTable (entities except current) */}
       <label className="grid gap-1 text-sm">
         <span className="text-gray-600">refTable</span>
-        <select className="w-full rounded-xl border px-3 py-2" value={selectedRefTable}
-          onChange={(e)=> { const val = e.target.value || ""; set("refTable", val || undefined); set("refColumn", undefined); set("relationshipName", undefined); }}>
+        <select
+          className="w-full rounded-xl border px-3 py-2"
+          value={selectedRefTable}
+          onChange={(e)=> {
+            const val = e.target.value || "";
+            set("refTable", val || undefined);
+            // Reset dependent fields when table changes
+            set("refColumn", undefined);
+            set("relationshipName", undefined);
+          }}
+        >
           <option value="">(none)</option>
           {refTableOptions.map(k => <option key={k} value={k}>{k}</option>)}
         </select>
       </label>
 
+      {/* 4) refColumn (from selected table only) */}
       <label className="grid gap-1 text-sm">
         <span className="text-gray-600">refColumn</span>
-        <select className="w-full rounded-xl border px-3 py-2" value={selectedRefColumn}
-          onChange={(e)=> set("refColumn", e.target.value || undefined)} disabled={!selectedRefTable}>
+        <select
+          className="w-full rounded-xl border px-3 py-2"
+          value={selectedRefColumn}
+          onChange={(e)=> set("refColumn", e.target.value || undefined)}
+          disabled={!selectedRefTable}
+        >
           <option value="">(none)</option>
           {refColumnOptions.map(p => <option key={p} value={p}>{p}</option>)}
         </select>
       </label>
 
+      {/* 5) relationshipName (restricted to fields of selected refTable) */}
       <label className="grid gap-1 text-sm">
         <span className="text-gray-600">relationshipName</span>
-        <select className="w-full rounded-xl border px-3 py-2" value={local.relationshipName || ""}
-          onChange={(e)=> set("relationshipName", e.target.value || undefined)} disabled={!selectedRefTable}>
+        <select
+          className="w-full rounded-xl border px-3 py-2"
+          value={local.relationshipName || ""}
+          onChange={(e)=> set("relationshipName", e.target.value || undefined)}
+          disabled={!selectedRefTable}
+        >
           <option value="">(none)</option>
           {relationshipNameOptions.map(p => <option key={p} value={p}>{p}</option>)}
         </select>
         <span className="text-xs text-gray-500 inline-flex items-center gap-1"><Info size={12}/> Note: typically an alias; here constrained to fields as requested.</span>
       </label>
 
-      <TextInput label="$ref (auto)" value={local["$ref"] || ""} onChange={()=>{}} placeholder="#/definitions/{table}/properties/{column}" />
+      {/* $ref derived automatically */}
+      <TextInput
+        label="$ref (auto)"
+        value={local["$ref"] || ""}
+        onChange={()=>{}}
+        placeholder="#/definitions/{table}/properties/{column}"
+      />
       <div className="text-xs text-gray-500 -mt-2 md:col-span-2">Derived from <code>refTable</code> and <code>refColumn</code>.</div>
 
       <TextArea label="Description" value={local.description || ""} onChange={(x) => set("description", x)} />
 
       <div className="md:col-span-2 pt-1 text-xs text-gray-500">
-        Draft‑07: <code>uniqueItems</code> is only valid on arrays. For DB uniqueness on scalars, consider <code>x-unique: true</code>.
+        Draft‑07 note: <code>uniqueItems</code> is valid only on arrays. For DB uniqueness on scalars, consider <code>x-unique: true</code>.
       </div>
 
       <div className="md:col-span-2 flex items-center justify-end">
-        <button onClick={() => onChange(local)} className="rounded-xl bg-black px-4 py-2 text-white">Apply</button>
+        <button
+          onClick={() => onChange(local)}
+          className="rounded-xl bg-black px-4 py-2 text-white"
+        >Apply</button>
       </div>
     </div>
   );
@@ -357,13 +435,16 @@ export default function SchemaGuiEditor({ initialSchema }) {
   const [message, setMessage] = React.useState(null);
   const [schemaErrors, setSchemaErrors] = React.useState([]);
 
-  // AI Assist state
+  // ---- AI state ----
   const [aiOpen, setAiOpen] = React.useState(false);
+  const [aiMode, setAiMode] = React.useState("new_definition"); // "extend_entity"
   const [aiText, setAiText] = React.useState("");
-  const [aiLoading, setAiLoading] = React.useState(false);
+  const [aiTemp, setAiTemp] = React.useState(0.2);
   const [aiPreview, setAiPreview] = React.useState(null); // { definition_key, definition }
+  const [aiLoading, setAiLoading] = React.useState(false);
+  const [aiFieldSelection, setAiFieldSelection] = React.useState({}); // name->bool
 
-  // Ajv instance (memoized)
+  // Ajv instance (draft-07)
   const ajv = React.useMemo(() => {
     const a = new Ajv({ allErrors: true, strict: false });
     addFormats(a);
@@ -498,17 +579,26 @@ export default function SchemaGuiEditor({ initialSchema }) {
     });
   }, [activeDef, filter]);
 
-  // ==== AI Assist actions ====
+  // ===== AI actions =====
   const doAiSuggest = async () => {
+    if (!aiText.trim()) return notify("Please describe what you need.", "error");
+    setAiLoading(true);
+    setAiPreview(null);
+    setAiFieldSelection({});
     try {
-      if (!aiText.trim()) {
-        notify("Please describe what you want the AI to create.", "error");
-        return;
-      }
-      setAiLoading(true);
-      setAiPreview(null);
-      const res = await aiSuggest(aiText);
-      setAiPreview(res); // { definition_key, definition }
+      const res = await aiSuggest({
+        instruction: aiText,
+        mode: aiMode,
+        schema_ctx: schema,               // send full current schema for context
+        target_entity: aiMode === "extend_entity" ? active : null,
+        temperature: aiTemp
+      });
+      // Build field selection default = true
+      const fields = Object.keys(res?.definition?.properties || {});
+      const selection = {};
+      fields.forEach(f => selection[f] = true);
+      setAiFieldSelection(selection);
+      setAiPreview(res);
     } catch (e) {
       notify(e.message, "error");
     } finally {
@@ -519,36 +609,51 @@ export default function SchemaGuiEditor({ initialSchema }) {
   const acceptAiSuggestion = () => {
     if (!aiPreview) return;
     const { definition_key, definition } = aiPreview;
-    const key = (definition_key || "").trim();
-    if (!key) return notify("Suggestion missing definition_key", "error");
+    const key = (definition_key || "").trim() || (aiMode === "extend_entity" ? active : "entity");
+
+    // Respect field selection
+    const selectedProps = {};
+    for (const [name, spec] of Object.entries(definition.properties || {})) {
+      if (aiFieldSelection[name]) selectedProps[name] = spec;
+    }
+    const pruned = {
+      ...definition,
+      properties: selectedProps
+    };
 
     const next = deepClone(schema);
     next.definitions = next.definitions || {};
 
-    if (next.definitions[key]) {
-      const existing = next.definitions[key];
-      // Merge properties
-      existing.properties = { ...(existing.properties || {}), ...(definition.properties || {}) };
-      // Merge required/primaryKey (dedup)
-      const uniq = (arr) => Array.from(new Set(arr.filter(Boolean)));
-      existing.required = uniq([...(existing.required || []), ...(definition.required || [])]);
-      existing.primaryKey = uniq([...(existing.primaryKey || []), ...(definition.primaryKey || [])]);
-      // Fill title if empty; preserve if already set
-      if (definition.title && !existing.title) existing.title = definition.title;
-      // Respect additionalProperties if explicitly provided
-      if (Object.prototype.hasOwnProperty.call(definition, "additionalProperties")) {
-        existing.additionalProperties = definition.additionalProperties;
-      }
+    if (aiMode === "extend_entity") {
+      const tgt = next.definitions[active];
+      tgt.properties = { ...(tgt.properties||{}), ...(pruned.properties||{}) };
+      const uniq = (arr) => Array.from(new Set((arr||[]).filter(Boolean)));
+      tgt.required = uniq([...(tgt.required||[]), ...(pruned.required||[])]);
+      tgt.primaryKey = uniq([...(tgt.primaryKey||[]), ...(pruned.primaryKey||[])]);
+      if (pruned.title && !tgt.title) tgt.title = pruned.title;
+      if (Object.prototype.hasOwnProperty.call(pruned, "additionalProperties"))
+        tgt.additionalProperties = pruned.additionalProperties;
     } else {
-      next.definitions[key] = definition;
+      if (next.definitions[key]) {
+        const tgt = next.definitions[key];
+        tgt.properties = { ...(tgt.properties||{}), ...(pruned.properties||{}) };
+        const uniq = (arr) => Array.from(new Set((arr||[]).filter(Boolean)));
+        tgt.required = uniq([...(tgt.required||[]), ...(pruned.required||[])]);
+        tgt.primaryKey = uniq([...(tgt.primaryKey||[]), ...(pruned.primaryKey||[])]);
+        if (!tgt.title && pruned.title) tgt.title = pruned.title;
+        if (Object.prototype.hasOwnProperty.call(pruned, "additionalProperties"))
+          tgt.additionalProperties = pruned.additionalProperties;
+      } else {
+        next.definitions[key] = pruned;
+      }
+      setActive(key);
     }
 
     setSchema(next);
-    setActive(key);
     setAiOpen(false);
     setAiPreview(null);
     setAiText("");
-    notify("AI suggestion merged");
+    notify("AI suggestion applied");
   };
 
   return (
@@ -781,33 +886,74 @@ export default function SchemaGuiEditor({ initialSchema }) {
       {/* AI Assist modal */}
       <Modal
         open={aiOpen}
-        title="AI Assist: Suggest a Definition"
+        title="AI Assist"
         onClose={()=> { setAiOpen(false); setAiPreview(null); setAiText(""); }}
         onSave={aiPreview ? acceptAiSuggestion : undefined}
         saveLabel="Accept & Merge"
       >
         <div className="grid gap-3">
-          <TextArea
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="inline-flex items-center gap-2 text-sm">
+              <input type="radio" checked={aiMode==="new_definition"} onChange={()=> setAiMode("new_definition")} />
+              New Definition
+            </label>
+            <label className="inline-flex items-center gap-2 text-sm">
+              <input type="radio" checked={aiMode==="extend_entity"} onChange={()=> setAiMode("extend_entity")} />
+              Extend Current Entity <span className="text-gray-600">({active || "none"})</span>
+            </label>
+            <label className="inline-flex items-center gap-2 text-sm ml-auto">
+              <span className="text-gray-600">Temperature</span>
+              <input type="range" min="0" max="1" step="0.05" value={aiTemp} onChange={(e)=> setAiTemp(parseFloat(e.target.value))} />
+              <span className="w-10 text-right text-sm tabular-nums">{aiTemp.toFixed(2)}</span>
+            </label>
+          </div>
+
+          <textarea
+            className="w-full rounded-xl border px-3 py-2"
             rows={6}
-            label="Describe the entity you want"
             value={aiText}
-            onChange={setAiText}
+            onChange={(e)=> setAiText(e.target.value)}
             placeholder={
-              "Example:\nCreate a 'projects' entity.\nFields: id (uuid), name (string max 120), owner_email (email), status (enum: planned, active, done), created_at (date-time).\nFK: owner_id → users.id"
+              aiMode==="new_definition"
+              ? "Create an 'invoices' entity with id (uuid), number (string), total (number), status enum: draft,sent,paid, created_at (date-time). FK: customer_id → users.id"
+              : "Add to current entity: display_name (string), avatar_url (uri), marketing_opt_in (boolean)"
             }
           />
+
           <div className="flex items-center gap-2">
             <button disabled={!aiText || aiLoading} onClick={doAiSuggest}
               className="inline-flex items-center gap-2 rounded-xl bg-black px-3 py-2 text-sm text-white disabled:opacity-60">
               <Sparkles size={16}/>{aiLoading ? "Thinking..." : "Generate suggestion"}
             </button>
           </div>
+
           {aiPreview && (
             <div className="rounded-xl border p-3 bg-gray-50">
               <div className="text-xs text-gray-600 mb-2">
-                Preview — will be merged into <code>definitions</code> with key <b>{aiPreview.definition_key}</b>
+                Preview for <b>{aiPreview.definition_key}</b> — pick fields to apply:
               </div>
-              <pre className="text-xs overflow-auto max-h-64">{JSON.stringify(aiPreview.definition, null, 2)}</pre>
+              <div className="grid gap-2">
+                {Object.keys(aiPreview.definition?.properties || {}).map((fname) => (
+                  <label key={fname} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={!!aiFieldSelection[fname]}
+                      onChange={(e)=> setAiFieldSelection(s => ({...s, [fname]: e.target.checked}))}
+                    />
+                    <span className="font-medium">{fname}</span>
+                    <span className="text-gray-500 text-xs">
+                      {aiPreview.definition.properties[fname].type}
+                      {aiPreview.definition.properties[fname].format ? ` (${aiPreview.definition.properties[fname].format})` : ""}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <details className="mt-3">
+                <summary className="cursor-pointer text-sm font-semibold">Raw JSON</summary>
+                <pre className="text-xs overflow-auto max-h-64 mt-2">
+                  {JSON.stringify(aiPreview.definition, null, 2)}
+                </pre>
+              </details>
             </div>
           )}
         </div>
