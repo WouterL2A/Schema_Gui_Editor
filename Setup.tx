@@ -1,0 +1,5 @@
+cd C:\GitHub\Schema_Gui_Editor
+nvm use 20.19.0
+node -v   # should print v20.19.0
+npm install
+npm run dev
