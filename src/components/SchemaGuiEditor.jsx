@@ -1,5 +1,5 @@
 import React from "react";
-import { Plus, Download, Upload, Trash2, Pencil, Save, X, Database, CheckCircle2, AlertTriangle, Search } from "lucide-react";
+import { Plus, Download, Upload, Trash2, Pencil, Save, X, Database, CheckCircle2, AlertTriangle, Search, Info } from "lucide-react";
 import Ajv from "ajv";
 import addFormats from "ajv-formats";
 import draft7Meta from "ajv/dist/refs/json-schema-draft-07.json";
@@ -9,7 +9,16 @@ const deepClone = (o) => JSON.parse(JSON.stringify(o));
 const JSON_TYPES = ["string", "number", "integer", "boolean", "array", "object"];
 const STRING_FORMATS = ["", "uuid", "email", "date-time", "uri", "hostname", "ipv4", "ipv6"];
 
-// --------- Default schema (same as your sample) ----------
+// Common pattern presets (helpful examples)
+const PATTERN_PRESETS = [
+  { label: "(none)", value: "" },
+  { label: "UUID v4", value: "^[0-9a-fA-F]{8}\\-[0-9a-fA-F]{4}\\-4[0-9a-fA-F]{3}\\-[89abAB][0-9a-fA-F]{3}\\-[0-9a-fA-F]{12}$" },
+  { label: "Email (simple)", value: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$" },
+  { label: "ISO 8601 date-time", value: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+\\-]\\d{2}:\\d{2})$" },
+  { label: "Slug (kebab-case)", value: "^[a-z0-9]+(?:-[a-z0-9]+)*$" }
+];
+
+// --------- Default schema (same as before) ----------
 const DEFAULT_SCHEMA = {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "User Management Model",
@@ -169,8 +178,8 @@ function Modal({ open, title, children, onClose, onSave, saveLabel="Save" }) {
   );
 }
 
-// --------- Property editor (draft-07 aware) ----------
-function PropertyForm({ value, onChange }) {
+// --------- Property editor (with your 1–5 enhancements) ----------
+function PropertyForm({ value, onChange, defs, activeEntityKey }) {
   const v = value || {};
   const [local, setLocal] = React.useState(v);
   React.useEffect(() => setLocal(v), [v]);
@@ -181,11 +190,54 @@ function PropertyForm({ value, onChange }) {
   const isNumber = t === "number" || t === "integer";
   const isArray = t === "array";
 
+  // 3) refTable options: all other entities except the one we're editing
+  const refTableOptions = React.useMemo(() => {
+    return Object.keys(defs || {}).filter(k => k !== activeEntityKey);
+  }, [defs, activeEntityKey]);
+
+  const selectedRefTable = local.refTable || "";
+  // 4) refColumn options: only properties from the selected refTable
+  const refColumnOptions = React.useMemo(() => {
+    if (!selectedRefTable || !defs?.[selectedRefTable]?.properties) return [];
+    return Object.keys(defs[selectedRefTable].properties);
+  }, [defs, selectedRefTable]);
+
+  const selectedRefColumn = local.refColumn || "";
+
+  // 5) relationshipName restricted to fields of selected refTable (per your request)
+  const relationshipNameOptions = refColumnOptions;
+
+  // Auto-derive $ref when refTable/refColumn change
+  React.useEffect(() => {
+    if (selectedRefTable && selectedRefColumn) {
+      set("$ref", `#/definitions/${selectedRefTable}/properties/${selectedRefColumn}`);
+    } else {
+      if (local["$ref"]) set("$ref", undefined);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRefTable, selectedRefColumn]);
+
+  // Enum helper
+  const handleEnumChange = (text) => {
+    const arr = text
+      .split(",")
+      .map(s => s.trim())
+      .filter(Boolean);
+    set("enum", arr.length ? arr : undefined);
+  };
+
+  // Pattern presets + free text
+  const [patternPreset, setPatternPreset] = React.useState("");
+  React.useEffect(() => {
+    const match = PATTERN_PRESETS.find(p => p.value === (local.pattern || ""));
+    setPatternPreset(match ? match.value : "");
+  }, [local.pattern]);
+
   return (
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
       <TextInput label="Name" value={local.__name || ""} onChange={(x) => set("__name", x)} />
 
-      {/* Type (restricted to draft-07 primitives) */}
+      {/* Type (draft-07) */}
       <label className="grid gap-1 text-sm">
         <span className="text-gray-600">Type</span>
         <select
@@ -198,7 +250,7 @@ function PropertyForm({ value, onChange }) {
         </select>
       </label>
 
-      {/* Format (only for string) */}
+      {/* Format (strings only) */}
       <label className="grid gap-1 text-sm">
         <span className="text-gray-600">Format</span>
         <select
@@ -213,12 +265,44 @@ function PropertyForm({ value, onChange }) {
 
       <TextInput label="Default" value={local.default || ""} onChange={(x) => set("default", x)} placeholder="now() or literal" />
 
+      {/* 1) Enum with example placeholder */}
+      <TextInput
+        label="Enum (comma separated)"
+        value={Array.isArray(local.enum) ? local.enum.join(",") : ""}
+        onChange={handleEnumChange}
+        placeholder="e.g. red, green, blue"
+      />
+
       {/* String constraints */}
       {isString && (
         <>
           <TextInput label="minLength" value={local.minLength ?? ""} onChange={(x)=> set("minLength", x ? Number(x) : undefined)} />
           <TextInput label="maxLength" value={local.maxLength ?? ""} onChange={(x)=> set("maxLength", x ? Number(x) : undefined)} />
-          <TextInput label="pattern" value={local.pattern ?? ""} onChange={(x)=> set("pattern", x || undefined)} placeholder="Regex (ECMA)" />
+
+          {/* 2) Pattern: presets + free text */}
+          <label className="grid gap-1 text-sm">
+            <span className="text-gray-600">Pattern</span>
+            <div className="flex gap-2">
+              <select
+                className="w-1/2 rounded-xl border px-3 py-2"
+                value={patternPreset}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setPatternPreset(val);
+                  set("pattern", val || undefined);
+                }}
+              >
+                {PATTERN_PRESETS.map(p => <option key={p.label} value={p.value}>{p.label}</option>)}
+              </select>
+              <input
+                className="w-1/2 rounded-xl border px-3 py-2"
+                value={local.pattern || ""}
+                placeholder="e.g. ^[A-Z]{3}-\\d{4}$"
+                onChange={(e) => set("pattern", e.target.value || undefined)}
+              />
+            </div>
+            <span className="text-xs text-gray-500">Use a preset or your own ECMA regex.</span>
+          </label>
         </>
       )}
 
@@ -230,14 +314,7 @@ function PropertyForm({ value, onChange }) {
         </>
       )}
 
-      {/* Enum (strings/numbers) */}
-      <TextInput
-        label="Enum (comma separated)"
-        value={Array.isArray(local.enum) ? local.enum.join(",") : ""}
-        onChange={(x)=> set("enum", x ? x.split(",").map(s=> s.trim()).filter(Boolean) : undefined)}
-      />
-
-      {/* Array-only bits */}
+      {/* Array-only */}
       {isArray && (
         <>
           <label className="grid gap-1 text-sm">
@@ -255,6 +332,7 @@ function PropertyForm({ value, onChange }) {
             label="items.enum (comma separated)"
             value={Array.isArray(local.items?.enum) ? local.items.enum.join(",") : ""}
             onChange={(x)=> set("items", { ...(local.items||{}), enum: x ? x.split(",").map(s=> s.trim()).filter(Boolean) : undefined })}
+            placeholder="e.g. bronze, silver, gold"
           />
           <label className="inline-flex items-center gap-2 text-sm mt-2">
             <input
@@ -268,15 +346,67 @@ function PropertyForm({ value, onChange }) {
         </>
       )}
 
-      {/* Relationship helpers (custom metadata for your generator) */}
-      <TextInput label="refTable" value={local.refTable || ""} onChange={(x) => set("refTable", x)} placeholder="users, roles, ..." />
-      <TextInput label="refColumn" value={local.refColumn || ""} onChange={(x) => set("refColumn", x)} placeholder="id" />
-      <TextInput label="relationshipName" value={local.relationshipName || ""} onChange={(x) => set("relationshipName", x)} />
-      <TextInput label="$ref" value={local["$ref"] || ""} onChange={(x) => set("$ref", x)} placeholder="#/definitions/users/properties/id" />
+      {/* 3) refTable (entities except current) */}
+      <label className="grid gap-1 text-sm">
+        <span className="text-gray-600">refTable</span>
+        <select
+          className="w-full rounded-xl border px-3 py-2"
+          value={selectedRefTable}
+          onChange={(e)=> {
+            const val = e.target.value || "";
+            set("refTable", val || undefined);
+            // Reset dependent fields when table changes
+            set("refColumn", undefined);
+            set("relationshipName", undefined);
+          }}
+        >
+          <option value="">(none)</option>
+          {refTableOptions.map(k => <option key={k} value={k}>{k}</option>)}
+        </select>
+      </label>
+
+      {/* 4) refColumn (from selected table only) */}
+      <label className="grid gap-1 text-sm">
+        <span className="text-gray-600">refColumn</span>
+        <select
+          className="w-full rounded-xl border px-3 py-2"
+          value={selectedRefColumn}
+          onChange={(e)=> set("refColumn", e.target.value || undefined)}
+          disabled={!selectedRefTable}
+        >
+          <option value="">(none)</option>
+          {refColumnOptions.map(p => <option key={p} value={p}>{p}</option>)}
+        </select>
+      </label>
+
+      {/* 5) relationshipName (restricted to fields of selected refTable) */}
+      <label className="grid gap-1 text-sm">
+        <span className="text-gray-600">relationshipName</span>
+        <select
+          className="w-full rounded-xl border px-3 py-2"
+          value={local.relationshipName || ""}
+          onChange={(e)=> set("relationshipName", e.target.value || undefined)}
+          disabled={!selectedRefTable}
+        >
+          <option value="">(none)</option>
+          {relationshipNameOptions.map(p => <option key={p} value={p}>{p}</option>)}
+        </select>
+        <span className="text-xs text-gray-500 inline-flex items-center gap-1"><Info size={12}/> Note: typically this is an alias; here it’s restricted to existing fields exactly as requested.</span>
+      </label>
+
+      {/* $ref derived automatically */}
+      <TextInput
+        label="$ref (auto)"
+        value={local["$ref"] || ""}
+        onChange={()=>{}}
+        placeholder="#/definitions/{table}/properties/{column}"
+      />
+      <div className="text-xs text-gray-500 -mt-2 md:col-span-2">Derived from <code>refTable</code> and <code>refColumn</code>.</div>
 
       <TextArea label="Description" value={local.description || ""} onChange={(x) => set("description", x)} />
-      <div className="md:col-span-2 pt-2 text-xs text-gray-500">
-        Note: <code>uniqueItems</code> is valid only on arrays (draft‑07). For DB uniqueness on scalars, consider a custom extension like <code>x-unique: true</code>.
+
+      <div className="md:col-span-2 pt-1 text-xs text-gray-500">
+        Draft‑07 note: <code>uniqueItems</code> is valid only on arrays. For DB uniqueness on scalars, consider <code>x-unique: true</code>.
       </div>
 
       <div className="md:col-span-2 flex items-center justify-end">
@@ -322,7 +452,6 @@ export default function SchemaGuiEditor({ initialSchema }) {
   };
 
   const validateSchema = () => {
-    // Use Ajv’s meta validation for draft‑07
     const valid = ajv.validateSchema(schema);
     if (!valid) {
       const errs = ajv.errors || [];
@@ -645,10 +774,18 @@ export default function SchemaGuiEditor({ initialSchema }) {
       </Modal>
 
       {/* Property modal */}
-      <Modal open={propModal.open} title={propModal.propName ? `Edit Property: ${propModal.propName}` : "Add Property"}
-             onClose={()=> setPropModal({ open: false, propName: "", draft: {} })}
-             onSave={()=> upsertProperty(propModal.propName, propModal.draft)}>
-        <PropertyForm value={propModal.draft} onChange={(val)=> setPropModal((p)=> ({...p, draft: val}))} />
+      <Modal
+        open={propModal.open}
+        title={propModal.propName ? `Edit Property: ${propModal.propName}` : "Add Property"}
+        onClose={()=> setPropModal({ open: false, propName: "", draft: {} })}
+        onSave={()=> upsertProperty(propModal.propName, propModal.draft)}
+      >
+        <PropertyForm
+          value={propModal.draft}
+          onChange={(val)=> setPropModal((p)=> ({...p, draft: val}))}
+          defs={defs}
+          activeEntityKey={active}
+        />
       </Modal>
     </div>
   );
